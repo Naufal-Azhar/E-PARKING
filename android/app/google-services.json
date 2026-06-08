@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "933955772550",
+    "project_id": "e-parking-debc9",
+    "storage_bucket": "e-parking-debc9.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:933955772550:android:60f1b29720130c8ac43107",
+        "android_client_info": {
+          "package_name": "id.ac.iteba.eparking"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAtm_WONVWkGg2fVcwvHDDR3t8yglhFNDM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

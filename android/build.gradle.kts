@@ -1,4 +1,9 @@
-allprojects {
+plugins {
+    // Tambahkan baris ini secara manual di paling atas
+    id("com.google.gms.google-services") version "4.4.2" apply false
+}
+
+all rojects {
     repositories {
         google()
         mavenCentral()
