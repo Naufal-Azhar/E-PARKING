@@ -95,4 +95,69 @@ class FirebaseService {
       return slots;
     });
   }
+
+  // --- FITUR BARU: LOGIKA TAP KARTU NFC (CHECK-IN & CHECK-OUT POTONG SALDO) ---
+  Future<Map<String, dynamic>> processNfcTap(String cardUid) async {
+    final uid = currentUid;
+    if (uid == null) return {'success': false, 'message': 'User belum login.'};
+
+    final userRef = _db.ref().child('users').child(uid);
+    final snapshot = await userRef.get();
+
+    if (!snapshot.exists) {
+      return {'success': false, 'message': 'Data user tidak ditemukan.'};
+    }
+
+    final userData = snapshot.value as Map;
+    bool isParking = userData['is_parking'] ?? false;
+    int currentSaldo = userData['saldo_dummy'] ?? 0;
+
+    // ALUR 1: JIKA BELUM PARKIR (TAP PERTAMA = MASUK / CHECK-IN)
+    if (!isParking) {
+      int now = DateTime.now().millisecondsSinceEpoch;
+      await userRef.update({
+        'is_parking': true,
+        'check_in_time': now,
+        'parked_at_slot': 'NFC Zone',
+        'card_uid': cardUid,
+      });
+      return {
+        'success': true, 
+        'status': 'check_in', 
+        'message': 'Check-In Sukses! Timer parkir dimulai.'
+      };
+    } 
+    // ALUR 2: JIKA SUDAH PARKIR (TAP KEDUA = KELUAR / POTONG SALDO)
+    else {
+      int checkInTime = userData['check_in_time'] ?? DateTime.now().millisecondsSinceEpoch;
+      int now = DateTime.now().millisecondsSinceEpoch;
+      
+      // Menghitung durasi total parkir (dalam satuan detik)
+      int durationInSeconds = ((now - checkInTime) / 1000).round();
+      if (durationInSeconds < 1) durationInSeconds = 1; // Minimal terhitung 1 detik
+
+      // ATURAN TARIF DEMO PBL: Rp 1.000 per 5 detik
+      int tarifPer5Detik = 1000;
+      int totalBiaya = ((durationInSeconds / 5).ceil()) * tarifPer5Detik;
+
+      if (currentSaldo < totalBiaya) {
+        return {'success': false, 'message': 'Saldo tidak cukup! Biaya parkir: Rp $totalBiaya'};
+      }
+
+      // Potong saldo dummy dan kembalikan status parkir user ke normal
+      int saldoBaru = currentSaldo - totalBiaya;
+      await userRef.update({
+        'is_parking': false,
+        'saldo_dummy': saldoBaru,
+        'check_in_time': null,
+        'parked_at_slot': '',
+      });
+
+      return {
+        'success': true,
+        'status': 'check_out',
+        'message': 'Check-Out Sukses!\nDurasi: $durationInSeconds detik\nBiaya: Rp $totalBiaya\nSisa Saldo: Rp $saldoBaru'
+      };
+    }
+  }
 }

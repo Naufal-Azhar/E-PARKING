@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:nfc_manager/nfc_manager.dart'; // Impor pustaka sensor NFC HP
 import '../../core/services/firebase_service.dart';
 import '../../models/user_model.dart';
 import '../../models/slot_model.dart';
@@ -74,11 +75,11 @@ class _DashboardViewState extends State<DashboardView> {
                           ),
                           const SizedBox(height: 12),
                           Row(
-                            mainAxisAlignment: MainAxisAlignment.between,
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
                               Text(
                                 user.isParking ? 'Parkir di: ${user.parkedAtSlot}' : 'Status: Mencari Parkir',
-                                style: const TextStyle(color: Colors.white80, fontSize: 14),
+                                style: const TextStyle(color: Colors.white70, fontSize: 14),
                               ),
                               Text(
                                 'Rp ${user.saldoDummy}',
@@ -151,7 +152,7 @@ class _DashboardViewState extends State<DashboardView> {
                               const SizedBox(height: 4),
                               Text(
                                 slot.isFilled ? "TERISI" : "KOSONG",
-                                style: const TextStyle(color: Colors.white80, fontWeight: FontWeight.w500, fontSize: 14),
+                                style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.w500, fontSize: 14),
                               ),
                             ],
                           ),
@@ -164,6 +165,74 @@ class _DashboardViewState extends State<DashboardView> {
             ],
           ),
         ),
+      ),
+      // --- FITUR BARU: TOMBOL PEMBACA SCAN KARTU NFC DI HP ---
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () async {
+          // 1. Periksa ketersediaan perangkat keras NFC di HP Android
+          bool isAvailable = await NfcManager.instance.isAvailable();
+          
+          if (!isAvailable) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Error: Fitur NFC HP tidak aktif atau tidak didukung!'),
+                backgroundColor: Colors.red,
+              ),
+            );
+            return;
+          }
+
+          // 2. Beri umpan balik visual bahwa sistem stand-by mendengarkan kartu
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('NFC Aktif! Tempelkan kartu KTM/Siswa ke belakang HP...'),
+              duration: Duration(seconds: 10),
+            ),
+          );
+
+          // 3. Membuka sesi jabat tangan sensor NFC HP
+          NfcManager.instance.startSession(onDiscovered: (NfcTag tag) async {
+            try {
+              final nfcData = tag.data;
+              // Mendeteksi berbagai jenis protokol chip NFC kartu pintar
+              final Map? identifier = nfcData['isodep'] ?? nfcData['mifareclassic'] ?? nfcData['nfca'];
+              
+              if (identifier != null && identifier.containsKey('identifier')) {
+                final List<int> uidBytes = List<int>.from(identifier['identifier']);
+                // Mengubah urutan bit biner kartu menjadi kode teks String HEX unik
+                String cardUid = uidBytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join(':').toUpperCase();
+
+                // 4. Melempar ID unik kartu ke database cloud Firebase
+                final result = await _firebaseService.processNfcTap(cardUid);
+
+                if (mounted) {
+                  // Hapus snackbar stand-by sebelumnya
+                  ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                  // Tampilkan notifikasi status Check-In/Check-Out berhasil
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(result['message']),
+                      backgroundColor: result['success'] ? Colors.green : Colors.red,
+                      duration: const Duration(seconds: 4),
+                    ),
+                  );
+                }
+              }
+            } catch (e) {
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Gagal membaca kartu: $e'), backgroundColor: Colors.red),
+                );
+              }
+            } finally {
+              // 5. Tutup kembali sesi komunikasi antena agar baterai HP hemat
+              NfcManager.instance.stopSession();
+            }
+          });
+        },
+        label: const Text('Scan Kartu NFC', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        icon: const Icon(Icons.nfc, color: Colors.white),
+        backgroundColor: Colors.blueAccent,
       ),
     );
   }
